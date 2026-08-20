@@ -125,6 +125,9 @@
       .stats-overlay .stat .l { font-size: 10px; color: #8fa3c7; }
       .stats-overlay .stat .v { font-size: 12px; font-weight: 600; margin-top: 2px; }
       .p2p .v { color: #2fd67a; } .up .v { color: #ffb84d; } .http .v { color: #4da3ff; } .peer .v { color: #4da3ff; }
+      .err-box { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center;
+        background: #0a0f18; color: #ff5c7a; font-size: 13px; text-align: center; padding: 20px; word-break: break-all; }
+      .err-box[hidden] { display: none; }
 
       @media (max-width: 900px) {
         .stats-overlay { top: 6px; right: 6px; gap: 4px; }
@@ -145,13 +148,36 @@
           <div class="stat p2p"><div class="l">占比</div><div class="v" id="sRatio">0%</div></div>
           <div class="stat peer"><div class="l">Peer</div><div class="v" id="sPeer">0</div></div>
         </div>
+        <div class="err-box" id="errBox" hidden></div>
       </div>
     </main>
 
     <script>
-      // ===== UMD 全局依赖：<script> 加载后直接用全局变量（无需 importmap / 构建）=====
+      // ===== UMD 全局依赖 =====
       let HlsJsP2PEngine = null;
       try { HlsJsP2PEngine = window.p2pml && window.p2pml.hlsjs && window.p2pml.hlsjs.HlsJsP2PEngine; } catch (e) {}
+
+      // ===== CDN 兜底：jsdelivr 失败时自动加载备选（unpkg / staticfile）=====
+      const loadScript = (u) => new Promise((res) => {
+        const s = document.createElement("script");
+        s.src = u; s.onload = () => res(true); s.onerror = () => { s.remove(); res(false); };
+        document.head.appendChild(s);
+      });
+      async function ensureLibs() {
+        if (!window.Hls) {
+          for (const u of ["https://unpkg.com/hls.js@1/dist/hls.min.js", "https://cdn.staticfile.org/hls.js/1.5.20/hls.min.js"]) {
+            if (await loadScript(u)) break;
+          }
+        }
+        if (!window.Artplayer) {
+          for (const u of ["https://unpkg.com/artplayer/dist/artplayer.min.js", "https://cdn.staticfile.org/artplayer/5.1.0/artplayer.min.js"]) {
+            if (await loadScript(u)) break;
+          }
+        }
+        if (!window.artplayerPluginHlsControl) {
+          await loadScript("https://unpkg.com/artplayer-plugin-hls-control@1.1.0/dist/artplayer-plugin-hls-control.min.js");
+        }
+      }
 
       // ===== 配置：客户端读取地址栏 URL 参数（纯静态，无需服务器） =====
       const qp = new URLSearchParams(location.search);
@@ -188,6 +214,10 @@
 
       // 统计悬浮层：默认显示，?stats=0 隐藏
       const SHOW_STATS = qp.get("stats") !== "0";
+      // 播放行为：?autoplay=0 不自动播放 · ?muted=0 不静音 · ?controls=0 隐藏控制条
+      const AUTOPLAY = qp.get("autoplay") !== "0";
+      const MUTED = qp.get("muted") !== "0";
+      const SHOW_CONTROLS = qp.get("controls") !== "0";
 
       // ===== 平台 / 设备标识 =====
       const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent || "")
@@ -223,6 +253,47 @@
         $("sRatio").textContent = total === 0 ? "0%" : (stats.p2p / total * 100).toFixed(1) + "%";
         $("sPeer").textContent = peers.size;
       }
+
+      // ===== iframe 控制 API（方便其他网站调用）=====
+      // 父页面 -> 播放器：{type:"p2p:play"|"p2p:pause"|"p2p:seek",time|"p2p:load",url|"p2p:mute",muted|"p2p:volume",value|"p2p:getState"}
+      // 播放器 -> 父页面：p2p:ready / p2p:state / p2p:stats（每秒）/ p2p:error
+      const post = (msg) => { try { window.parent.postMessage(msg, "*"); } catch (e) {} };
+      function postState() {
+        const v = art && art.video;
+        if (!v) return;
+        post({ type: "p2p:state", playing: !v.paused && !v.ended, currentTime: v.currentTime, duration: v.duration || 0, muted: v.muted, volume: v.volume, src: STREAM_URL });
+      }
+      function showError(msg) {
+        log(`❌ ${msg}`, "err");
+        const box = document.getElementById("errBox");
+        if (box) { box.textContent = msg; box.hidden = false; }
+        post({ type: "p2p:error", message: msg });
+      }
+      window.addEventListener("message", (e) => {
+        if (e.source !== window.parent) return;   // 仅响应父页面
+        const d = e.data || {}, cmd = d.type;
+        if (typeof cmd !== "string" || !cmd.startsWith("p2p:")) return;
+        const v = art && art.video;
+        switch (cmd) {
+          case "p2p:play": v && v.play(); break;
+          case "p2p:pause": v && v.pause(); break;
+          case "p2p:seek": if (v && typeof d.time === "number") v.currentTime = Math.max(0, d.time); break;
+          case "p2p:load":
+            if (d.url && /^https?:\/\//i.test(d.url)) {
+              const u = new URL(location.href);
+              u.searchParams.set("url", d.url);
+              location.href = u.toString();
+            }
+            break;
+          case "p2p:mute": if (v) v.muted = !!d.muted; break;
+          case "p2p:volume": if (v && typeof d.value === "number") v.volume = Math.max(0, Math.min(1, d.value)); break;
+          case "p2p:getState": postState(); break;
+        }
+      });
+      setInterval(() => {
+        const total = stats.http + stats.p2p;
+        post({ type: "p2p:stats", http: stats.http, p2p: stats.p2p, up: stats.up, ratio: total ? +((stats.p2p / total * 100).toFixed(1)) : 0, peers: peers.size });
+      }, 1000);
 
       // ===== P2P 引擎事件 =====
       let engine = null;
@@ -330,9 +401,10 @@
           aspectRatio: true,      // 画面比例
           subtitleOffset: true,   // 字幕偏移
           playsInline: true,      // iOS 内联播放必需
+          controls: SHOW_CONTROLS,// 控制条（?controls=0 隐藏）
           customType: { m3u8: playM3u8 },
-          autoplay: true,
-          muted: true,            // 静音自动播放（iOS 限制）
+          autoplay: AUTOPLAY,     // ?autoplay=0 关闭
+          muted: MUTED,           // ?muted=0 带声音（iOS 自动播放需静音）
           volume: 0.5,
         };
         const hlsControl = window.artplayerPluginHlsControl;
@@ -351,9 +423,18 @@
         }
       }
 
-      // ===== 初始化 =====
-      log(`📌 ArtPlayer + p2p-media-loader（静态版 · HLS · mDNS 修复）`);
-      load();
+      // ===== 初始化（异步：先确保 CDN 库可用）=====
+      log(`📌 HLS P2P Player 启动`);
+      (async () => {
+        await ensureLibs();
+        if (!window.Artplayer) {
+          showError("加载播放器失败：CDN 不可达（hls.js / ArtPlayer）");
+          return;
+        }
+        if (!HlsJsP2PEngine) log("⚠ p2p 引擎不可用，将回退原生 HLS", "err");
+        load();
+        post({ type: "p2p:ready", core: "p2p-media-loader", url: STREAM_URL });
+      })();
     </script>
   </body>
 </html>

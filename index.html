@@ -142,12 +142,50 @@
             <td>固定分组 ID（仅兼容旧用法；互通测试请勿传，默认按流地址分组）</td>
             <td>按流地址派生</td>
           </tr>
+          <tr>
+            <td><code>autoplay</code> <span class="tag opt">可选</span></td>
+            <td>传 <code>0</code> 不自动播放（等用户点播放）</td>
+            <td>自动播放</td>
+          </tr>
+          <tr>
+            <td><code>muted</code> <span class="tag opt">可选</span></td>
+            <td>传 <code>0</code> 不静音（有声音自动播放可能被浏览器拦截）</td>
+            <td>静音</td>
+          </tr>
+          <tr>
+            <td><code>controls</code> <span class="tag opt">可选</span></td>
+            <td>传 <code>0</code> 隐藏播放器控制条（纯展示用）</td>
+            <td>显示</td>
+          </tr>
         </table>
+      </section>
+
+      <!-- iframe 控制 API -->
+      <section class="card">
+        <h2>四、iframe 控制 API（父页面调用）</h2>
+        <p>其他网站可通过 <code>postMessage</code> 控制 iframe 内的播放器，播放器也会主动上报状态与 P2P 统计。</p>
+        <h3>父页面 → 播放器（控制命令）</h3>
+        <pre>const frame = document.getElementById("player");
+frame.contentWindow.postMessage({ type: "p2p:play" }, "*");                                  // 播放
+frame.contentWindow.postMessage({ type: "p2p:pause" }, "*");                                 // 暂停
+frame.contentWindow.postMessage({ type: "p2p:seek", time: 60 }, "*");                        // 跳转（秒）
+frame.contentWindow.postMessage({ type: "p2p:load", url: "https://.../index.m3u8" }, "*"); // 换源
+frame.contentWindow.postMessage({ type: "p2p:mute", muted: true }, "*");                    // 静音
+frame.contentWindow.postMessage({ type: "p2p:volume", value: 0.8 }, "*");                   // 音量
+frame.contentWindow.postMessage({ type: "p2p:getState" }, "*");                             // 请求状态</pre>
+        <h3>播放器 → 父页面（状态上报）</h3>
+        <pre>window.addEventListener("message", (e) => {
+  const d = e.data || {};
+  if (d.type === "p2p:ready") console.log("播放器就绪", d);   // 就绪
+  if (d.type === "p2p:state") console.log("状态", d);        // playing/currentTime/duration/muted/volume
+  if (d.type === "p2p:stats") console.log("P2P", d);         // http/p2p/up/ratio/peers（每秒上报）
+  if (d.type === "p2p:error") console.error("错误", d);      // 加载失败等
+});</pre>
       </section>
 
       <!-- 示例 -->
       <section class="card">
-        <h2>四、实用示例</h2>
+        <h2>五、实用示例</h2>
         <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" target="_blank" rel="noopener">▶ 基本播放（默认流 + 默认 tracker）</a>
         <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&stats=0" target="_blank" rel="noopener">▶ 隐藏统计（干净嵌入）</a>
         <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&tracker=wss://bot3.1230sb.com/tracker&stun=stun:stun.qq.com:3478" target="_blank" rel="noopener">▶ 追加自定义 tracker + STUN</a>
@@ -156,7 +194,7 @@
 
       <!-- 原理 -->
       <section class="card">
-        <h2>五、P2P 工作方式</h2>
+        <h2>六、P2P 工作方式</h2>
         <ol>
           <li>浏览器加载 m3u8 清单 → 通过 WebTorrent Tracker 加入该流的 <b>swarm</b>（对等组）</li>
           <li>同一流地址的观众自动进入同一 swarm，通过 WebRTC 互相连接</li>
@@ -168,7 +206,7 @@
 
       <!-- 注意事项 -->
       <section class="card">
-        <h2>六、注意事项</h2>
+        <h2>七、注意事项</h2>
         <ul>
           <li><span class="warn">⚠ 单码率流</span>：按流地址分组，不同 m3u8 各自独立 swarm，不互通</li>
           <li><span class="warn">⚠ 防盗链流</span>：带 token 且高频刷新的直播流，分片生命周期极短，P2P 命中率会下降</li>
