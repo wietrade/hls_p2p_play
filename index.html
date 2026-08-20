@@ -70,7 +70,7 @@
           <li>✅ 移动端自适应（手机/平板/桌面）</li>
           <li>✅ P2P 引擎常驻，切流不重建</li>
         </ul>
-        <p>线上地址：<a href="https://bot3.1230sb.com/player/play.html" target="_blank" rel="noopener">https://bot3.1230sb.com/player/play.html</a></p>
+        <p>播放器页面：<a href="play.html">play.html</a>（与本文档同目录，部署到任意域名均可直接访问）</p>
       </section>
 
       <!-- 在线试玩 -->
@@ -91,7 +91,7 @@
         <h2>二、快速开始</h2>
         <h3>1. iframe 嵌入到你的网站（其他网站调用）</h3>
         <pre>&lt;!-- 其他网站调用：只需在播放器 URL 后追加参数 --&gt;
-&lt;iframe src="https://bot3.1230sb.com/player/play.html
+&lt;iframe src="https://你的域名/play.html
         ?url=你的m3u8流地址     &lt;!-- 必填：视频流地址（http/https）--&gt;
         &amp;tracker=可选           &lt;!-- 可选：追加 Tracker，逗号分隔 --&gt;
         &amp;stun=可选              &lt;!-- 可选：追加 STUN，逗号分隔 --&gt;
@@ -148,10 +148,10 @@
       <!-- 示例 -->
       <section class="card">
         <h2>四、实用示例</h2>
-        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" target="_blank" rel="noopener">▶ 基本播放（默认流 + 默认 tracker）</a>
-        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&stats=0" target="_blank" rel="noopener">▶ 隐藏统计（干净嵌入）</a>
-        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&tracker=wss://bot3.1230sb.com/tracker&stun=stun:stun.qq.com:3478" target="_blank" rel="noopener">▶ 追加自定义 tracker + STUN</a>
-        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&noturn=1" target="_blank" rel="noopener">▶ 仅 STUN（关闭 TURN 对照实验）</a>
+        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" target="_blank" rel="noopener">▶ 基本播放（默认流 + 默认 tracker）</a>
+        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&stats=0" target="_blank" rel="noopener">▶ 隐藏统计（干净嵌入）</a>
+        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&tracker=wss://bot3.1230sb.com/tracker&stun=stun:stun.qq.com:3478" target="_blank" rel="noopener">▶ 追加自定义 tracker + STUN</a>
+        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&noturn=1" target="_blank" rel="noopener">▶ 仅 STUN（关闭 TURN 对照实验）</a>
       </section>
 
       <!-- 原理 -->
