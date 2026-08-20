@@ -401,7 +401,7 @@
           aspectRatio: true,      // 画面比例
           subtitleOffset: true,   // 字幕偏移
           playsInline: true,      // iOS 内联播放必需
-          controls: SHOW_CONTROLS,// 控制条（?controls=0 隐藏）
+          ...(SHOW_CONTROLS ? {} : { controls: [] }), // ?controls=0 隐藏控制条（ArtPlayer controls 为数组）
           customType: { m3u8: playM3u8 },
           autoplay: AUTOPLAY,     // ?autoplay=0 关闭
           muted: MUTED,           // ?muted=0 带声音（iOS 自动播放需静音）
