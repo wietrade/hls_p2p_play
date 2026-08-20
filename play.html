@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="format-detection" content="telephone=no" />
+    <title>ArtPlayer + P2P 静态版（HLS · mDNS 修复）</title>
+
+    <!-- ============================================================
+         mDNS 禁用补丁：把本地 ICE host 候选中的 .local（mDNS 混淆）
+         替换为真实局域网 IP（地址栏 ?lanip=），解决老 WebView/浏览器
+         无法解析 mDNS 候选导致的 WebRTC 连接失败。
+         必须在所有 WebRTC 相关脚本加载之前注入。
+         ============================================================ -->
+    <script>
+      (function () {
+        var LAN_IP = new URLSearchParams(location.search).get("lanip");
+        if (LAN_IP && !/^\d{1,3}(\.\d{1,3}){3}$/.test(LAN_IP)) LAN_IP = null;
+        var MDNS_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.local/gi;
+        var fixSdp = function (sdp) { return sdp ? (LAN_IP ? sdp.replace(MDNS_RE, LAN_IP) : sdp) : sdp; };
+        var fixCandStr = function (c) { return c ? (LAN_IP ? c.replace(MDNS_RE, LAN_IP) : c) : c; };
+        var OrigPC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+        if (!OrigPC) return;
+
+        function WrappedPC(cfg) {
+          // ICE 兜底注入：core 3.x 内部 rtcConfig 可能不生效时强制注入 __P2P_ICE（4.0.0 已修复，此为双保险）
+          try {
+            var ice = (typeof window.__P2P_ICE !== "undefined" && window.__P2P_ICE) || null;
+            if (ice && ice.length && (!cfg || !cfg.iceServers || !cfg.iceServers.length)) {
+              cfg = Object.assign({}, cfg || {}, { iceServers: ice });
+            }
+          } catch (e) {}
+          var pc = new OrigPC(cfg);
+          var origAddEventListener = pc.addEventListener.bind(pc);
+          var origSetLocalDescription = pc.setLocalDescription.bind(pc);
+          var origSetRemoteDescription = pc.setRemoteDescription.bind(pc);
+          var origAddIceCandidate = pc.addIceCandidate.bind(pc);
+          var userOnIce = null;
+          var bound = false;
+
+          var wrapEvent = function (fn) {
+            return function (e) {
+              if (e && e.candidate && e.candidate.candidate) {
+                try {
+                  var fixed = fixCandStr(e.candidate.candidate);
+                  var cand = new RTCIceCandidate({
+                    candidate: fixed,
+                    sdpMid: e.candidate.sdpMid,
+                    sdpMLineIndex: e.candidate.sdpMLineIndex,
+                  });
+                  Object.defineProperty(e, "candidate", { value: cand, configurable: true });
+                } catch (err) {}
+              }
+              return fn(e);
+            };
+          };
+
+          pc.addEventListener = function (type, fn, opts) {
+            if (type === "icecandidate") return origAddEventListener(type, wrapEvent(fn), opts);
+            return origAddEventListener(type, fn, opts);
+          };
+
+          Object.defineProperty(pc, "onicecandidate", {
+            get: function () { return userOnIce; },
+            set: function (fn) {
+              userOnIce = fn;
+              if (fn && !bound) {
+                bound = true;
+                origAddEventListener("icecandidate", wrapEvent(function (e) {
+                  if (userOnIce) return userOnIce(e);
+                }));
+              }
+            },
+            configurable: true,
+          });
+
+          pc.setLocalDescription = function (desc) {
+            if (desc && desc.sdp) desc.sdp = fixSdp(desc.sdp);
+            return origSetLocalDescription(desc);
+          };
+          // 入站候选保持原样：交给浏览器原生 mDNS 解析（Chrome 支持），
+          // 避免把"对方 .local"错误地替换成本机 IP。
+          pc.setRemoteDescription = function (desc) {
+            return origSetRemoteDescription(desc);
+          };
+          pc.addIceCandidate = function (cand) {
+            return origAddIceCandidate(cand);
+          };
+          return pc;
+        }
+        WrappedPC.prototype = OrigPC.prototype;
+        window.RTCPeerConnection = WrappedPC;
+        if (window.webkitRTCPeerConnection) {
+          window.webkitRTCPeerConnection = WrappedPC;
+        }
+        console.log("[mdns-fix] 包装启用 LAN_IP=" + (LAN_IP || "(无，仅 ICE 注入)"));
+      })();
+    </script>
+
+    <!-- Hls.js（全局，~1 最新版支持 iOS 17.1+ ManagedMediaSource） -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@~1/dist/hls.min.js"></script>
+
+    <!-- P2P 全局版（UMD，core 已内联，一行 script 加载，无需 importmap；仅 HLS） -->
+    <script src="./vendor/hlsjs.iife.min.js?v=400"></script>
+
+    <!-- ArtPlayer（UMD 全局 Artplayer） -->
+    <script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.min.js"></script>
+
+    <!-- ArtPlayer HLS 控制插件（画质/音轨切换，读取 art.hls） -->
+    <script src="https://cdn.jsdelivr.net/npm/artplayer-plugin-hls-control@1.1.0/dist/artplayer-plugin-hls-control.min.js"></script>
+
+    <style>
+      * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+      body { margin: 0; background: #0f1420; color: #dbe4f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 14px; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+      .container { width: 100%; }
+      .player-wrap { position: relative; width: 100%; }
+      #artplayer { width: 100%; aspect-ratio: 16 / 9; background: #000; }
+      .stats-overlay { position: absolute; top: 10px; right: 10px; z-index: 10;
+        display: grid; grid-template-columns: repeat(5, auto); gap: 6px; pointer-events: none; }
+      .stats-overlay.stats-hidden { display: none; }
+      .stats-overlay .stat { background: rgba(10, 15, 24, 0.72); border: 1px solid rgba(255,255,255,0.14);
+        border-radius: 6px; padding: 4px 8px; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+      .stats-overlay .stat .l { font-size: 10px; color: #8fa3c7; }
+      .stats-overlay .stat .v { font-size: 12px; font-weight: 600; margin-top: 2px; }
+      .p2p .v { color: #2fd67a; } .up .v { color: #ffb84d; } .http .v { color: #4da3ff; } .peer .v { color: #4da3ff; }
+
+      @media (max-width: 900px) {
+        .stats-overlay { top: 6px; right: 6px; gap: 4px; }
+        .stats-overlay .stat { padding: 3px 6px; }
+        .stats-overlay .stat .v { font-size: 11px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <!-- 播放器 + 统计悬浮层（位于视频框内部右上角）；100% 宽度，便于 iframe 嵌入；纯静态，无需服务器 -->
+      <div class="player-wrap">
+        <div id="artplayer"></div>
+        <div class="stats-overlay" id="statsOverlay">
+          <div class="stat http"><div class="l">HTTP</div><div class="v" id="sHttp">0 B</div></div>
+          <div class="stat p2p"><div class="l">P2P</div><div class="v" id="sP2P">0 B</div></div>
+          <div class="stat up"><div class="l">上传</div><div class="v" id="sUp">0 B</div></div>
+          <div class="stat p2p"><div class="l">占比</div><div class="v" id="sRatio">0%</div></div>
+          <div class="stat peer"><div class="l">Peer</div><div class="v" id="sPeer">0</div></div>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      // ===== UMD 全局依赖：<script> 加载后直接用全局变量（无需 importmap / 构建）=====
+      let HlsJsP2PEngine = null;
+      try { HlsJsP2PEngine = window.p2pml && window.p2pml.hlsjs && window.p2pml.hlsjs.HlsJsP2PEngine; } catch (e) {}
+
+      // ===== 配置：客户端读取地址栏 URL 参数（纯静态，无需服务器） =====
+      const qp = new URLSearchParams(location.search);
+
+      // 默认配置
+      const DEFAULT_STREAM   = "https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8";
+      const DEFAULT_TRACKERS = ["wss://tracker.openwebtorrent.com"];
+      const DEFAULT_STUN     = [
+        "stun:stun.l.google.com:19302",
+        "stun:stun1.l.google.com:19302",
+        "stun:global.stun.twilio.com:3478",
+        "stun:stun.qq.com:3478",
+      ];
+
+      // 按正则清洗逗号/空格分隔的列表
+      const splitValid = (raw, re) => (raw || "").split(/[,，\s]+/).map((s) => s.trim()).filter((s) => s && re.test(s));
+
+      // 流地址：?url= 传 http(s) 地址，非法或缺失时用默认
+      const rawUrl = qp.get("url") || "";
+      const STREAM_URL = /^https?:\/\//i.test(rawUrl) ? rawUrl : DEFAULT_STREAM;
+
+      // Tracker：默认 + ?tracker= 追加（不清空默认，防止用户输错导致无法连接；非法项自动丢弃）
+      const TRACKERS = [...new Set([...DEFAULT_TRACKERS, ...splitValid(qp.get("tracker"), /^wss?:\/\//i)])];
+
+      // STUN：默认 + ?stun= 追加（同上）
+      const STUN_SERVERS = [...new Set([...DEFAULT_STUN, ...splitValid(qp.get("stun"), /^(stun|turn):/i)])];
+
+      // TURN：?noturn=1 关闭中继兜底（默认开）
+      const USE_TURN = qp.get("noturn") !== "1";
+
+      // 局域网 IP（mDNS 修复）：?lanip= IPv4 格式
+      const rawLanip = qp.get("lanip") || "";
+      const LAN_IP = /^\d{1,3}(\.\d{1,3}){3}$/.test(rawLanip) ? rawLanip : null;
+
+      // 统计悬浮层：默认显示，?stats=0 隐藏
+      const SHOW_STATS = qp.get("stats") !== "0";
+
+      // ===== 平台 / 设备标识 =====
+      const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent || "")
+        || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      const detectPlatform = () => {
+        const ua = navigator.userAgent || "";
+        if (/Android/i.test(ua)) return "And";
+        if (isIOS) return "iOS";
+        if (/Windows/i.test(ua)) return "Win";
+        if (/Macintosh|Mac OS X/i.test(ua)) return "Mac";
+        if (/Linux/i.test(ua)) return "Lin";
+        return "Web";
+      };
+      const PEER_PREFIX = "W-" + detectPlatform(); // peerId 前缀（≤20 字符，core 自动补齐）
+
+      // ?swarmId= 固定分组（仅兼容旧用法；互通测试请勿传）
+      const SWARM_ID = qp.get("swarmId");
+
+      // ===== 统计状态 =====
+      const $ = (id) => document.getElementById(id);
+      const stats = { http: 0, p2p: 0, up: 0 };
+      const peers = new Set();
+      const fmt = (n) => n < 1024 ? n + " B" : (n / 1048576).toFixed(1) + " MB";
+      function log(msg, cls = "") {
+        // UI 日志已隐藏，改走控制台（保留调试信息）
+        console.log(`[p2p] ${msg}`);
+      }
+      function render() {
+        $("sHttp").textContent = fmt(stats.http);
+        $("sP2P").textContent = fmt(stats.p2p);
+        $("sUp").textContent = fmt(stats.up);
+        const total = stats.http + stats.p2p;
+        $("sRatio").textContent = total === 0 ? "0%" : (stats.p2p / total * 100).toFixed(1) + "%";
+        $("sPeer").textContent = peers.size;
+      }
+
+      // ===== P2P 引擎事件 =====
+      let engine = null;
+      function onEngine(e) {
+        engine = e;
+        // 显示当前 core 版本（确认加载的是 4.0.0：-PM0400-；3.0.1 缓存会显示 -PM0300-）
+        try {
+          const g = e.getConfig ? e.getConfig() : e.core.getConfig();
+          const v = g.core ? g.core.trackerClientVersionPrefix : g.trackerClientVersionPrefix;
+          log(`🧬 core ${v}`, "p2p");
+        } catch (err) { log(`🧬 core 版本读取失败: ${err.message}`, "err"); }
+        e.addEventListener("onPeerConnect", (p) => { peers.add(p.peerId); render(); log(`✔ Peer 连接: ${p.peerId}`, "p2p"); });
+        e.addEventListener("onPeerClose", (p) => { peers.delete(p.peerId); render(); log(`✖ Peer 断开: ${p.peerId}`); });
+        e.addEventListener("onChunkDownloaded", (b, src) => { if (src === "http") stats.http += b; else stats.p2p += b; render(); });
+        e.addEventListener("onChunkUploaded", (b) => { stats.up += b; render(); });
+        e.addEventListener("onSegmentLoaded", (d) => log(`◉ 分片完成 (${d.downloadSource}) ${fmt(d.bytesLength)} · peer=${d.peerId || "—"}`, d.downloadSource === "p2p" ? "p2p" : ""));
+        e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker: ${d.trackerUrl}`, "err"));
+      }
+
+      // ===== core 配置 =====
+      function coreCfg() {
+        // 公网 NAT 穿透：STUN 打洞 + 自建 TURN(3002) 中继兜底（对称 NAT 用；?noturn=1 关闭）
+        const _ice = STUN_SERVERS.map((url) => ({ urls: url }));
+        if (USE_TURN) {
+          _ice.push({ urls: "turn:43.165.167.132:3002", username: "p2p", credential: "P2pTurn123" });
+        }
+        window.__P2P_ICE = _ice;
+        return {
+          // peerId 前缀：标识节点（网页端 W-平台 / APP 端 A+机型），便于 tracker/日志识别设备
+          trackerClientVersionPrefix: PEER_PREFIX,
+          // swarmId 留空 → 按流地址分组（由下方 streamSwarmIdBuilder 派生，与 APK 端算法一致）
+          announceTrackers: TRACKERS,
+          p2pNotReceivingBytesTimeoutMs: 30000,
+          p2pErrorRetries: 10,
+          // core 4.0.0: rtcConfig 为对象格式（3.x 需函数，4.x 已修复 iceServers 未传入的 bug）
+          rtcConfig: { iceServers: window.__P2P_ICE },
+          ...(SWARM_ID ? { swarmId: SWARM_ID } : {}),
+          // 按流派生 streamSwarmId（与 APK 端 index.html 算法逐字一致，单码率）：
+          // 同一 m3u8 → 两端同 swarm 互通；不同 m3u8 → 各自 swarm 隔离
+          streamSwarmIdBuilder: ({ swarmId, streamType }) => {
+            const url = (swarmId || "")
+              .split("?")[0].split("#")[0]
+              .replace(/^https?:\/\//i, "").replace(/\/+$/, "")
+              .toLowerCase();
+            return `v2-${streamType}-${url}`;
+          },
+        };
+      }
+      const guard = (hls) => { const o = hls.recoverMediaError?.bind(hls); hls.recoverMediaError = () => { try { hls.startLoad(); } catch {} }; };
+
+      // ===== 播放（customType.m3u8 → P2P HLS；iOS 兼容回退）=====
+      let art = null;
+      function playM3u8(video, url, artInstance) {
+        if (HlsJsP2PEngine && window.Hls && window.Hls.isSupported()) {
+          // P2P HLS：hls.js 支持 MSE / iOS 17.1+ ManagedMediaSource 均走此路径
+          if (artInstance.hls) artInstance.hls.destroy();
+          const HlsWithP2P = HlsJsP2PEngine.injectMixin(window.Hls);
+          const hls = new HlsWithP2P({
+            p2p: { core: coreCfg(), onHlsJsCreated(h) { onEngine(h.p2pEngine); } },
+            enableWorker: false, // iOS ManagedMediaSource 必须在主线程
+          });
+          guard(hls);
+          hls.loadSource(url);
+          hls.attachMedia(video);
+          artInstance.hls = hls; // 官方约定属性
+          artInstance.on("destroy", () => hls.destroy());
+          // 刷新 hls-control 插件 UI（画质/音轨按钮）
+          const refresh = () => {
+            try { artInstance.plugins?.artplayerPluginHlsControl?.update?.(); } catch {}
+          };
+          hls.on(window.Hls.Events.MANIFEST_PARSED, refresh);
+          hls.on(window.Hls.Events.LEVEL_SWITCHED, refresh);
+          video.addEventListener("loadedmetadata", refresh);
+          const poll = setInterval(() => {
+            if (hls.levels && hls.levels.length) { refresh(); clearInterval(poll); }
+          }, 600);
+          setTimeout(() => clearInterval(poll), 30000);
+          log(`▶ P2P HLS 已接入${isIOS ? "（iOS ManagedMediaSource）" : ""}`);
+        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+          // iOS 老版本无 MSE：走原生 HLS（不经过 P2P，但可正常播放）
+          video.src = url;
+          log("🍎 当前环境 hls.js 不可用，已回退原生 HLS（无 P2P）", "err");
+        } else {
+          artInstance.notice.show = "不支持的播放格式: m3u8";
+        }
+      }
+
+      // ===== 初始化播放器 =====
+      function load() {
+        try { art?.destroy(false); } catch {}
+        art = null; engine = null; peers.clear();
+        stats.http = 0; stats.p2p = 0; stats.up = 0; render();
+        log(`🚀 初始化 ArtPlayer [${isIOS ? "iOS" : "Hls.js/HLS"}]: ${STREAM_URL}`);
+        log(`  tracker=${TRACKERS.join(",")}`);
+        log(`  stun=${STUN_SERVERS.join(",")}`);
+        if (USE_TURN) log(`  turn=turn:43.165.167.132:3002（中继兜底）`);
+        if (LAN_IP) log(`  [mdns-fix] lanip=${LAN_IP}（本地 host 候选将用真实 IP）`, "p2p");
+        if (SWARM_ID) log(`  [swarm] 固定分组 swarmId=${SWARM_ID}`);
+        const opts = {
+          container: "#artplayer",
+          url: STREAM_URL,
+          type: "m3u8",
+          setting: true,          // ⚙ 设置面板
+          playbackRate: true,     // 播放速度
+          aspectRatio: true,      // 画面比例
+          subtitleOffset: true,   // 字幕偏移
+          playsInline: true,      // iOS 内联播放必需
+          customType: { m3u8: playM3u8 },
+          autoplay: true,
+          muted: true,            // 静音自动播放（iOS 限制）
+          volume: 0.5,
+        };
+        const hlsControl = window.artplayerPluginHlsControl;
+        if (hlsControl) {
+          opts.plugins = [hlsControl({
+            quality: { control: false, setting: true, title: "画质", auto: "自动", getName: (l) => l.height && l.height > 0 ? l.height + "P" : "默认" },
+            audio: { control: false, setting: true, title: "音轨", auto: "自动", getName: (t) => t.name || t.id },
+          })];
+        }
+        art = new Artplayer(opts);
+        window.__art = art;
+        // 统计悬浮层：默认显示，?stats=0 隐藏
+        if (!SHOW_STATS) {
+          const ov = document.getElementById("statsOverlay");
+          if (ov) ov.classList.add("stats-hidden");
+        }
+      }
+
+      // ===== 初始化 =====
+      log(`📌 ArtPlayer + p2p-media-loader（静态版 · HLS · mDNS 修复）`);
+      load();
+    </script>
+  </body>
+</html>

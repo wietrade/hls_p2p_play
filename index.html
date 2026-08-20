@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>hls_p2p_demo 使用说明</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #0f1420; color: #dbe4f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        font-size: 14px; line-height: 1.7; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+      header { padding: 28px 20px 20px; background: #182036; border-bottom: 1px solid #2e3a55; text-align: center; }
+      header h1 { margin: 0 0 6px; font-size: 24px; }
+      header .sub { color: #8fa3c7; font-size: 13px; }
+      .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+      .card { background: #1a2233; border: 1px solid #2e3a55; border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+      .card h2 { margin: 0 0 12px; font-size: 16px; color: #4da3ff; }
+      .card h3 { margin: 18px 0 8px; font-size: 14px; color: #8fa3c7; }
+      code { background: #222c42; padding: 1px 6px; border-radius: 4px; font-family: Consolas, Monaco, monospace; font-size: 12.5px; color: #ffd479; }
+      pre { background: #0a0f18; border: 1px solid #2e3a55; border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+        font-family: Consolas, Monaco, monospace; font-size: 12.5px; color: #a8d4ff; white-space: pre-wrap; word-break: break-all; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2e3a55; vertical-align: top; }
+      th { color: #8fa3c7; font-weight: 600; background: #182036; }
+      tr:last-child td { border-bottom: none; }
+      .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; margin-right: 4px; }
+      .tag.req { background: rgba(255,92,122,0.15); color: #ff5c7a; border: 1px solid rgba(255,92,122,0.4); }
+      .tag.opt { background: rgba(77,163,255,0.15); color: #4da3ff; border: 1px solid rgba(77,163,255,0.4); }
+      .tag.default { background: rgba(143,163,199,0.15); color: #8fa3c7; border: 1px solid rgba(143,163,199,0.4); }
+      a { color: #4da3ff; text-decoration: none; } a:hover { text-decoration: underline; }
+      .ok { color: #2fd67a; } .warn { color: #ffb84d; } .err { color: #ff5c7a; }
+      .demo-link { display: block; background: #0a0f18; border: 1px solid #2e3a55; border-radius: 8px;
+        padding: 10px 12px; margin: 6px 0; font-family: Consolas, monospace; font-size: 12px; color: #a8d4ff; word-break: break-all; }
+      ul { margin: 6px 0; padding-left: 20px; } li { margin: 4px 0; }
+
+      /* ---- 在线试玩 ---- */
+      .player-input { display: flex; gap: 8px; margin-bottom: 12px; }
+      .player-input input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 6px;
+        border: 1px solid #2e3a55; background: #0f1420; color: #dbe4f5; font-size: 13px; }
+      .player-input input:focus { outline: none; border-color: #4da3ff; }
+      .player-input button { padding: 9px 20px; border-radius: 6px; border: 1px solid #2f6fed;
+        background: #2f6fed; color: #fff; cursor: pointer; font-size: 13px; white-space: nowrap; }
+      .player-input button:hover { filter: brightness(1.15); }
+      .player-box { position: relative; width: 100%; aspect-ratio: 16 / 9;
+        background: #000; border-radius: 8px; overflow: hidden; border: 1px solid #2e3a55; }
+      .player-box iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+      .player-hint { font-size: 12px; color: #5a6b8c; margin-top: 8px; }
+      @media (max-width: 700px) { header h1 { font-size: 20px; } .container { padding: 12px; }
+        .player-input { flex-direction: column; } .player-input button { width: 100%; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>📺 hls_p2p_demo 使用说明</h1>
+      <div class="sub">ArtPlayer + P2P（p2p-media-loader）HLS 播放器 · 100% 全宽 · 可 iframe 嵌入 · iOS 兼容</div>
+    </header>
+
+    <main class="container">
+      <!-- 简介 -->
+      <section class="card">
+        <h2>一、这是什么</h2>
+        <p>
+          <code>hls_p2p_demo.html</code> 是一个基于 <b>ArtPlayer</b> + <b>p2p-media-loader</b>（WebRTC 数据通道）的
+          <b>HLS 流媒体 P2P 播放器</b>。观众之间通过 WebRTC 互相分享视频分片，降低源站带宽压力。
+        </p>
+        <ul>
+          <li>✅ 纯静态 HTML，无需服务器，任何静态托管/CDN/本地均可部署</li>
+          <li>✅ 100% 全宽播放器，专为 <code>&lt;iframe&gt;</code> 嵌入设计</li>
+          <li>✅ iOS 17.1+ 走 ManagedMediaSource 支持 P2P；老 iOS 自动回退原生 HLS</li>
+          <li>✅ 移动端自适应（手机/平板/桌面）</li>
+          <li>✅ P2P 引擎常驻，切流不重建</li>
+        </ul>
+        <p>线上地址：<a href="https://bot3.1230sb.com/player/play.html" target="_blank" rel="noopener">https://bot3.1230sb.com/player/play.html</a></p>
+      </section>
+
+      <!-- 在线试玩 -->
+      <section class="card">
+        <h2>🎬 在线试玩</h2>
+        <form class="player-input" onsubmit="playStream(event)">
+          <input type="text" id="streamInput" value="https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" placeholder="输入 m3u8 流地址（http/https）..." />
+          <button type="submit">▶ 播放</button>
+        </form>
+        <div class="player-box">
+          <iframe id="playerFrame" title="P2P 播放器预览" src="play.html?url=https%3A%2F%2Ffengbao12.com%2Fvideo%2Fwanjuzongdongyuan5%2F4a1b08cb03d6%2Findex.m3u8" allowfullscreen></iframe>
+        </div>
+        <div class="player-hint">💡 在输入框改流地址后点「▶ 播放」即可换源；也可直接用 <code>?url=</code> 参数带流地址打开播放器页面。</div>
+      </section>
+
+      <!-- 快速开始 -->
+      <section class="card">
+        <h2>二、快速开始</h2>
+        <h3>1. iframe 嵌入到你的网站（其他网站调用）</h3>
+        <pre>&lt;!-- 其他网站调用：只需在播放器 URL 后追加参数 --&gt;
+&lt;iframe src="https://bot3.1230sb.com/player/play.html
+        ?url=你的m3u8流地址     &lt;!-- 必填：视频流地址（http/https）--&gt;
+        &amp;tracker=可选           &lt;!-- 可选：追加 Tracker，逗号分隔 --&gt;
+        &amp;stun=可选              &lt;!-- 可选：追加 STUN，逗号分隔 --&gt;
+        &amp;noturn=1               &lt;!-- 可选：传 1 关闭 TURN 中继 --&gt;
+        &amp;stats=0                &lt;!-- 可选：传 0 隐藏统计悬浮层 --&gt;"
+        style="width:100%; aspect-ratio:16/9; border:0;"
+        allowfullscreen&gt;&lt;/iframe&gt;</pre>
+      </section>
+
+      <!-- 参数说明 -->
+      <section class="card">
+        <h2>三、参数说明（其他网站调用）</h2>
+        <p>其他网站通过 <code>&lt;iframe&gt;</code> 调用时，只需在播放器 URL 后追加以下参数。<b>唯一必传的是 <code>url</code></b>（流地址），其余参数均可省略（使用默认值）。</p>
+        <table>
+          <tr><th>参数</th><th>说明</th><th>默认值</th></tr>
+          <tr>
+            <td><code>url</code> <span class="tag req">必填</span></td>
+            <td>视频流地址（.m3u8，http/https）。缺失或非法时用内置测试流</td>
+            <td>内置测试流</td>
+          </tr>
+          <tr>
+            <td><code>tracker</code> <span class="tag opt">可选</span></td>
+            <td>WebTorrent Tracker 地址（逗号分隔，须 ws:// 或 wss://）。<b>追加</b>到默认 tracker 之后，不覆盖；非法项自动丢弃</td>
+            <td><code>wss://tracker.openwebtorrent.com</code></td>
+          </tr>
+          <tr>
+            <td><code>stun</code> <span class="tag opt">可选</span></td>
+            <td>STUN 服务器（逗号分隔，须 stun:/turn:）。<b>追加</b>到默认之后，不覆盖；非法项自动丢弃</td>
+            <td>4 个公共 STUN</td>
+          </tr>
+          <tr>
+            <td><code>noturn</code> <span class="tag opt">可选</span></td>
+            <td>传 <code>1</code> 关闭自建 TURN 中继（默认开启，用于公网对称 NAT 兜底）</td>
+            <td>开启</td>
+          </tr>
+          <tr>
+            <td><code>stats</code> <span class="tag opt">可选</span></td>
+            <td>传 <code>0</code> 隐藏视频框内统计悬浮层（HTTP/P2P 下载、上传、占比、Peer 数）</td>
+            <td>显示</td>
+          </tr>
+          <tr>
+            <td><code>lanip</code> <span class="tag opt">可选</span></td>
+            <td>局域网 IP（IPv4），用于 mDNS 修复：把 ICE 候选中的 .local 替换为真实 IP，解决老 WebView 无法解析 mDNS</td>
+            <td>无</td>
+          </tr>
+          <tr>
+            <td><code>swarmId</code> <span class="tag opt">可选</span></td>
+            <td>固定分组 ID（仅兼容旧用法；互通测试请勿传，默认按流地址分组）</td>
+            <td>按流地址派生</td>
+          </tr>
+        </table>
+      </section>
+
+      <!-- 示例 -->
+      <section class="card">
+        <h2>四、实用示例</h2>
+        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" target="_blank" rel="noopener">▶ 基本播放（默认流 + 默认 tracker）</a>
+        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&stats=0" target="_blank" rel="noopener">▶ 隐藏统计（干净嵌入）</a>
+        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&tracker=wss://bot3.1230sb.com/tracker&stun=stun:stun.qq.com:3478" target="_blank" rel="noopener">▶ 追加自定义 tracker + STUN</a>
+        <a class="demo-link" href="https://bot3.1230sb.com/player/play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&noturn=1" target="_blank" rel="noopener">▶ 仅 STUN（关闭 TURN 对照实验）</a>
+      </section>
+
+      <!-- 原理 -->
+      <section class="card">
+        <h2>五、P2P 工作方式</h2>
+        <ol>
+          <li>浏览器加载 m3u8 清单 → 通过 WebTorrent Tracker 加入该流的 <b>swarm</b>（对等组）</li>
+          <li>同一流地址的观众自动进入同一 swarm，通过 WebRTC 互相连接</li>
+          <li>分片同时从 <b>HTTP 源站</b> 和 <b>P2P 邻居</b> 获取，优先 P2P（节省源站带宽）</li>
+          <li>STUN 打洞 + TURN 中继兜底，穿透公网 NAT（对称 NAT 也能连）</li>
+        </ol>
+        <p>统计悬浮层里的 <span class="ok">P2P 占比</span> 反映 P2P 命中率——多人同时观看时占比会显著上升。</p>
+      </section>
+
+      <!-- 注意事项 -->
+      <section class="card">
+        <h2>六、注意事项</h2>
+        <ul>
+          <li><span class="warn">⚠ 单码率流</span>：按流地址分组，不同 m3u8 各自独立 swarm，不互通</li>
+          <li><span class="warn">⚠ 防盗链流</span>：带 token 且高频刷新的直播流，分片生命周期极短，P2P 命中率会下降</li>
+          <li><span class="ok">✔ iOS 17.1+</span>：通过 ManagedMediaSource 走 P2P；<span class="err">✖ 老 iOS</span> 自动回退原生 HLS（能播但无 P2P）</li>
+          <li><span class="ok">✔ 移动端</span>：自动静音播放（iOS 限制）；点击即可开启声音</li>
+          <li><span class="ok">✔ peerId</span>：网页端以 <code>W-平台</code> 标识（如 W-Win / W-And / W-iOS），便于在 tracker/日志识别设备</li>
+        </ul>
+      </section>
+    </main>
+
+    <script>
+      // 在线试玩：根据输入框的流地址刷新播放器 iframe
+      function playStream(e) {
+        if (e) e.preventDefault();
+        const url = document.getElementById("streamInput").value.trim();
+        if (!/^https?:\/\//i.test(url)) {
+          alert("请输入 http/https 开头的流地址");
+          return;
+        }
+        const frame = document.getElementById("playerFrame");
+        frame.src = "play.html?url=" + encodeURIComponent(url);
+      }
+    </script>
+  </body>
+</html>
