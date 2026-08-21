@@ -418,34 +418,45 @@
       // ===== 播放（customType.m3u8 → P2P HLS；iOS 兼容回退）=====
       let art = null;
       function playM3u8(video, url, artInstance) {
+        // WebRTC 检测：部分浏览器（如小米自带浏览器）没有 RTCPeerConnection → 无法 P2P，走纯 hls.js HTTP
+        const hasWebRTC = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
         if (HlsJsP2PEngine && window.Hls && window.Hls.isSupported()) {
-          // P2P HLS：hls.js 支持 MSE / iOS 17.1+ ManagedMediaSource 均走此路径
           // 幂等保护：ArtPlayer 会周期性重复触发 customType，同一 URL 已接入则复用现有引擎，
           // 避免 Hls + P2P 引擎反复销毁重建导致 peer 抖动/断连
           if (artInstance.hls && artInstance.__hlsUrl === url) return;
           if (artInstance.hls) artInstance.hls.destroy();
           artInstance.__hlsUrl = url;
+          // 刷新 hls-control 插件 UI（画质/音轨按钮）
+          const refresh = () => {
+            try { artInstance.plugins?.artplayerPluginHlsControl?.update?.(); } catch {}
+          };
+          const wireHls = (hls) => {
+            guard(hls);
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            artInstance.hls = hls; // 官方约定属性
+            artInstance.on("destroy", () => hls.destroy());
+            hls.on(window.Hls.Events.MANIFEST_PARSED, refresh);
+            hls.on(window.Hls.Events.LEVEL_SWITCHED, refresh);
+            video.addEventListener("loadedmetadata", refresh);
+            const poll = setInterval(() => {
+              if (hls.levels && hls.levels.length) { refresh(); clearInterval(poll); }
+            }, 600);
+            setTimeout(() => clearInterval(poll), 30000);
+          };
+          if (!hasWebRTC) {
+            // MSE 可用但无 WebRTC（小米自带浏览器等）→ 纯 hls.js HTTP 播放，不启动 P2P 引擎（避免 tracker 警告噪音）
+            wireHls(new window.Hls({ enableWorker: false }));
+            log("ℹ 当前浏览器无 WebRTC，已用 hls.js HTTP 播放（无 P2P）", "err");
+            try { artInstance.notice.show = "当前浏览器不支持 P2P（无 WebRTC），已用 HTTP 播放"; } catch (e) {}
+            return;
+          }
           const HlsWithP2P = HlsJsP2PEngine.injectMixin(window.Hls);
           const hls = new HlsWithP2P({
             p2p: { core: coreCfg(), onHlsJsCreated(h) { onEngine(h.p2pEngine); } },
             enableWorker: false, // iOS ManagedMediaSource 必须在主线程
           });
-          guard(hls);
-          hls.loadSource(url);
-          hls.attachMedia(video);
-          artInstance.hls = hls; // 官方约定属性
-          artInstance.on("destroy", () => hls.destroy());
-          // 刷新 hls-control 插件 UI（画质/音轨按钮）
-          const refresh = () => {
-            try { artInstance.plugins?.artplayerPluginHlsControl?.update?.(); } catch {}
-          };
-          hls.on(window.Hls.Events.MANIFEST_PARSED, refresh);
-          hls.on(window.Hls.Events.LEVEL_SWITCHED, refresh);
-          video.addEventListener("loadedmetadata", refresh);
-          const poll = setInterval(() => {
-            if (hls.levels && hls.levels.length) { refresh(); clearInterval(poll); }
-          }, 600);
-          setTimeout(() => clearInterval(poll), 30000);
+          wireHls(hls);
           log(`▶ P2P HLS 已接入${isIOS ? "（iOS ManagedMediaSource）" : ""}`);
         } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
           // iOS 老版本无 MSE：走原生 HLS（不经过 P2P，但可正常播放）

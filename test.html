@@ -272,7 +272,9 @@
         const mseSupport = window.Hls ? window.Hls.isSupported() : "无Hls";
         const nativeHls = video.canPlayType ? video.canPlayType("application/vnd.apple.mpegurl") : "";
         const MS = typeof window.MediaSource !== "undefined" ? (window.MediaSource.isTypeSupported ? "有" : "有但无isTypeSupported") : "无";
-        log(`🎯 playM3u8: Hls=${!!window.Hls} isSupported=${mseSupport} MediaSource=${MS} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`);
+        // WebRTC 检测：部分浏览器（如小米自带浏览器）没有 RTCPeerConnection → 无法 P2P
+        const hasWebRTC = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection);
+        log(`🎯 playM3u8: Hls=${!!window.Hls} isSupported=${mseSupport} MediaSource=${MS} WebRTC=${hasWebRTC} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`);
         try {
           if (window.Hls && window.Hls.isSupported() && HlsJsP2PEngine) {
             // 幂等保护：ArtPlayer 会周期性重复触发 customType，同一 URL 已接入则复用现有引擎，
@@ -280,6 +282,18 @@
             if (artInstance.hls && artInstance.__hlsUrl === url) return;
             if (artInstance.hls) artInstance.hls.destroy();
             artInstance.__hlsUrl = url;
+            if (!hasWebRTC) {
+              // MSE 可用但无 WebRTC（小米自带浏览器等）→ 纯 hls.js HTTP 播放，不启动 P2P 引擎（避免 tracker 警告噪音）
+              const hls0 = new window.Hls({ enableWorker: false });
+              guard(hls0);
+              hls0.loadSource(url);
+              hls0.attachMedia(video);
+              artInstance.hls = hls0;
+              artInstance.on("destroy", () => hls0.destroy());
+              log("ℹ 当前浏览器无 WebRTC，已用 hls.js HTTP 播放（无 P2P）", "err");
+              try { artInstance.notice.show = "当前浏览器不支持 P2P（无 WebRTC），已用 HTTP 播放"; } catch (e) {}
+              return;
+            }
             const HlsWithP2P = HlsJsP2PEngine.injectMixin(window.Hls);
             const hls = new HlsWithP2P({
               p2p: { core: coreCfg(), onHlsJsCreated(h) { onEngine(h.p2pEngine); } },
