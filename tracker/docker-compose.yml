@@ -1,0 +1,18 @@
+# wt-tracker 服务器部署（docker compose 方式）
+# 用法：
+#   docker compose up -d --build
+#   docker compose logs -f wt-tracker
+# 说明：
+#   - 使用 host 网络，直接绑定 127.0.0.1:8083（仅本机可连，由 nginx 反代对外）
+#   - 配置文件挂载为只读
+services:
+  wt-tracker:
+    build:
+      context: ./wt-tracker
+      dockerfile: ../Dockerfile
+    image: wt-tracker:latest
+    container_name: wt-tracker
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config.server.json:/config/config.json:ro

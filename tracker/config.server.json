@@ -1,0 +1,24 @@
+{
+  "servers": [
+    {
+      "server": {
+        "port": 8083,
+        "host": "127.0.0.1"
+      },
+      "websockets": {
+        "path": "/*",
+        "maxPayloadLength": 65536,
+        "idleTimeout": 240,
+        "compression": 1,
+        "maxConnections": 0
+      }
+    }
+  ],
+  "tracker": {
+    "maxOffers": 5,
+    "announceInterval": 120
+  },
+  "websocketsAccess": {
+    "denyEmptyOrigin": false
+  }
+}

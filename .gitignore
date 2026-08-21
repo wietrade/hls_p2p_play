@@ -1,0 +1,12 @@
+# ---- 依赖与构建产物 ----
+node_modules/
+
+# ---- tracker 子模块依赖（Novage/wt-tracker 官方克隆，含 node_modules，不纳入本仓库）----
+tracker/wt-tracker/
+
+# ---- 打包产物 ----
+tracker/wt-tracker-src.tar.gz
+
+# ---- 系统/编辑器 ----
+.DS_Store
+Thumbs.db
