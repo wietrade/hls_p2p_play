@@ -420,7 +420,11 @@
       function playM3u8(video, url, artInstance) {
         if (HlsJsP2PEngine && window.Hls && window.Hls.isSupported()) {
           // P2P HLS：hls.js 支持 MSE / iOS 17.1+ ManagedMediaSource 均走此路径
+          // 幂等保护：ArtPlayer 会周期性重复触发 customType，同一 URL 已接入则复用现有引擎，
+          // 避免 Hls + P2P 引擎反复销毁重建导致 peer 抖动/断连
+          if (artInstance.hls && artInstance.__hlsUrl === url) return;
           if (artInstance.hls) artInstance.hls.destroy();
+          artInstance.__hlsUrl = url;
           const HlsWithP2P = HlsJsP2PEngine.injectMixin(window.Hls);
           const hls = new HlsWithP2P({
             p2p: { core: coreCfg(), onHlsJsCreated(h) { onEngine(h.p2pEngine); } },
