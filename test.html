@@ -226,7 +226,9 @@
         e.addEventListener("onPeerClose", (p) => { peers.delete(p.peerId); render(); log(`✖ Peer 断开: ${p.peerId}`); });
         e.addEventListener("onChunkDownloaded", (b, src) => { if (src === "http") stats.http += b; else stats.p2p += b; render(); });
         e.addEventListener("onChunkUploaded", (b) => { stats.up += b; render(); });
-        e.addEventListener("onSegmentLoaded", (d) => log(`◉ 分片完成 (${d.downloadSource}) ${fmt(d.bytesLength)} · peer=${d.peerId || "—"}`, d.downloadSource === "p2p" ? "p2p" : ""));
+        // 分片完成日志默认屏蔽（防刷屏）；需要排查时 ?seglog=1 开启
+        const SEG_LOG = qp.get("seglog") === "1";
+        e.addEventListener("onSegmentLoaded", (d) => { if (SEG_LOG) log(`◉ 分片完成 (${d.downloadSource}) ${fmt(d.bytesLength)} · peer=${d.peerId || "—"}`, d.downloadSource === "p2p" ? "p2p" : ""); });
         e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker 错误: ${d.trackerUrl} ${d.error?.message || ""}`, "err"));
         e.addEventListener("onTrackerWarning", (d) => log(`⚠ Tracker 警告: ${d.trackerUrl} ${d.warning?.message || ""}`));
         e.addEventListener("onPeerConnectError", (d) => log(`⚠ Peer 连接失败: ${d.peerId} (${d.trackerUrl}) ${d.error?.message || ""}`, "err"));
