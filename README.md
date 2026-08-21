@@ -34,6 +34,12 @@
 | `stats` | 可选 | 传 `0` 隐藏统计悬浮层 | 显示 |
 | `lanip` | 可选 | 局域网 IP（IPv4，mDNS 修复） | 无 |
 | `swarmId` | 可选 | 固定分组 ID（仅兼容旧用法） | 按流地址派生 |
+| `cache` | 可选 | 传 `0` 关闭 IndexedDB 持久分片缓存（改回内存缓存） | 开启（持久） |
+| `cacheLimit` | 可选 | 持久缓存容量上限（MiB），超出后最老分片优先逐出 | `1024` |
+
+> IndexedDB 持久缓存：分片落本地浏览器库，页面刷新 / 换源后仍可命中，点播场景大幅提升缓存命中率；
+> 存储实现见 `vendor/indexeddb-storage.js`（官方 customSegmentStorageFactory 示例的移植 + 容量逐出）。
+> 换源（`p2p:load`）不再整页刷新，改为原地重建播放器，缓存保留。
 
 > tracker / stun 采用「默认 + 追加」策略：即使用户传入错误地址，默认值仍生效，保证可连接。
 

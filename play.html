@@ -103,6 +103,9 @@
     <!-- P2P 全局版（UMD，core 已内联，一行 script 加载，无需 importmap；仅 HLS） -->
     <script src="./vendor/hlsjs.iife.min.js?v=400"></script>
 
+    <!-- 可选：IndexedDB 持久分片缓存（点播命中率提升；?cache=0 关闭，?cacheLimit= 设容量 MiB） -->
+    <script src="./vendor/indexeddb-storage.js?v=1"></script>
+
     <!-- ArtPlayer（UMD 全局 Artplayer） -->
     <script src="https://cdn.jsdelivr.net/npm/artplayer/dist/artplayer.min.js"></script>
 
@@ -202,9 +205,9 @@
       // 按正则清洗逗号/空格分隔的列表
       const splitValid = (raw, re) => (raw || "").split(/[,，\s]+/).map((s) => s.trim()).filter((s) => s && re.test(s));
 
-      // 流地址：?url= 传 http(s) 地址，非法或缺失时用默认
+      // 流地址：?url= 传 http(s) 地址，非法或缺失时用默认（换源不刷页时动态更新）
       const rawUrl = qp.get("url") || "";
-      const STREAM_URL = /^https?:\/\//i.test(rawUrl) ? rawUrl : DEFAULT_STREAM;
+      let STREAM_URL = /^https?:\/\//i.test(rawUrl) ? rawUrl : DEFAULT_STREAM;
 
       // Tracker：默认 + ?tracker= 追加（不清空默认，防止用户输错导致无法连接；非法项自动丢弃）
       const TRACKERS = [...new Set([...DEFAULT_TRACKERS, ...splitValid(qp.get("tracker"), /^wss?:\/\//i)])];
@@ -221,6 +224,9 @@
 
       // 统计悬浮层：默认显示，?stats=0 隐藏
       const SHOW_STATS = qp.get("stats") !== "0";
+      // 持久缓存：默认开（IndexedDB，分片跨页面/换源复用）；?cache=0 关闭；?cacheLimit= 容量 MiB（默认 1024）
+      const USE_PERSIST_CACHE = qp.get("cache") !== "0";
+      const CACHE_LIMIT_MIB = (() => { const v = parseInt(qp.get("cacheLimit"), 10); return v > 0 ? v : 1024; })();
       // 播放行为：?autoplay=0 不自动播放 · ?muted=0 不静音 · ?controls=0 隐藏控制条
       const AUTOPLAY = qp.get("autoplay") !== "0";
       const MUTED = qp.get("muted") !== "0";
@@ -286,11 +292,8 @@
           case "p2p:pause": v && v.pause(); break;
           case "p2p:seek": if (v && typeof d.time === "number") v.currentTime = Math.max(0, d.time); break;
           case "p2p:load":
-            if (d.url && /^https?:\/\//i.test(d.url)) {
-              const u = new URL(location.href);
-              u.searchParams.set("url", d.url);
-              location.href = u.toString();
-            }
+            // 换源不刷新页面：重建播放器（IndexedDB 缓存保留，peer 重新连接）
+            if (d.url && /^https?:\/\//i.test(d.url)) switchStream(d.url);
             break;
           case "p2p:mute": if (v) v.muted = !!d.muted; break;
           case "p2p:volume": if (v && typeof d.value === "number") v.volume = Math.max(0, Math.min(1, d.value)); break;
@@ -320,6 +323,45 @@
         e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker: ${d.trackerUrl}`, "err"));
       }
 
+      // ===== 自定义分片缓存（提升缓存命中率）=====
+      // 内存版兜底（等价于官方默认 SegmentMemoryStorage 的简化实现，?cache=0 或脚本缺失时用）
+      function makeMemoryStorage() {
+        const cache = new Map();
+        let usage = 0, cb = null;
+        const key = (sw, id) => sw + "|" + id;
+        return {
+          async initialize() {},
+          onPlaybackUpdated() {},
+          onSegmentRequested() {},
+          async storeSegment(_sw, streamSwarmId, segmentId, data, startTime, endTime, streamType) {
+            cache.set(key(streamSwarmId, segmentId), { data, segmentId, streamSwarmId, startTime, endTime, streamType });
+            usage += data.byteLength;
+            if (cb) cb(streamSwarmId);
+          },
+          async getSegmentData(_sw, streamSwarmId, segmentId) {
+            const it = cache.get(key(streamSwarmId, segmentId));
+            return it ? it.data : undefined;
+          },
+          getUsage() { return { totalCapacity: 4096, usedCapacity: usage / 1048576 }; },
+          hasSegment(_sw, streamSwarmId, segmentId) { return cache.has(key(streamSwarmId, segmentId)); },
+          getStoredSegmentIds(_sw, streamSwarmId) {
+            const out = [];
+            for (const v of cache.values()) if (v.streamSwarmId === streamSwarmId) out.push(v.segmentId);
+            return out;
+          },
+          destroy() { cache.clear(); },
+          setSegmentChangeCallback(fn) { cb = fn; },
+        };
+      }
+      // 选择缓存实现：?cache=1（默认）IndexedDB 持久缓存；?cache=0 或脚本缺失 → 内存缓存
+      function makeSegmentStorage() {
+        const P = window.P2PML;
+        if (USE_PERSIST_CACHE && P && P.createIndexedDbStorage) {
+          return P.createIndexedDbStorage({ limitMiB: CACHE_LIMIT_MIB });
+        }
+        return makeMemoryStorage();
+      }
+
       // ===== core 配置 =====
       function coreCfg() {
         // 公网 NAT 穿透：STUN 打洞 + 自建 TURN(3002) 中继兜底（对称 NAT 用；?noturn=1 关闭）
@@ -337,6 +379,8 @@
           p2pErrorRetries: 10,
           // core 4.0.0: rtcConfig 为对象格式（3.x 需函数，4.x 已修复 iceServers 未传入的 bug）
           rtcConfig: { iceServers: window.__P2P_ICE },
+          // 自定义分片缓存：IndexedDB 持久化（点播跨页/换源命中率提升）；factory 必须返回合法 SegmentStorage
+          customSegmentStorageFactory: () => makeSegmentStorage(),
           ...(SWARM_ID ? { swarmId: SWARM_ID } : {}),
           // 按流派生 streamSwarmId（与 APK 端 index.html 算法逐字一致，单码率）：
           // 同一 m3u8 → 两端同 swarm 互通；不同 m3u8 → 各自 swarm 隔离
@@ -388,12 +432,30 @@
         }
       }
 
+      // ===== 换源（不刷新页面）：更新地址栏 + 重建播放器（缓存/引擎重建，分片缓存经 IndexedDB 保留） =====
+      function setStreamUrl(url) {
+        STREAM_URL = url;
+        try {
+          const u = new URL(location.href);
+          u.searchParams.set("url", url);
+          history.replaceState(null, "", u.toString());
+        } catch (e) {}
+      }
+      function switchStream(url) {
+        if (!/^https?:\/\//i.test(url)) return;
+        log(`🔄 换源（不刷页）: ${url}`);
+        setStreamUrl(url);
+        load();
+        post({ type: "p2p:ready", core: "p2p-media-loader", url: STREAM_URL });
+      }
+
       // ===== 初始化播放器 =====
       function load() {
         try { art?.destroy(false); } catch {}
         art = null; engine = null; peers.clear();
         stats.http = 0; stats.p2p = 0; stats.up = 0; render();
         log(`🚀 初始化 ArtPlayer [${isIOS ? "iOS" : "Hls.js/HLS"}]: ${STREAM_URL}`);
+        log(`  cache=${USE_PERSIST_CACHE ? `IndexedDB（持久, ${CACHE_LIMIT_MIB} MiB）` : "内存（?cache=0）"}`);
         log(`  tracker=${TRACKERS.join(",")}`);
         log(`  stun=${STUN_SERVERS.join(",")}`);
         if (USE_TURN) log(`  turn=turn:43.165.167.132:3002（中继兜底）`);

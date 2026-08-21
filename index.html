@@ -157,6 +157,16 @@
             <td>传 <code>0</code> 隐藏播放器控制条（纯展示用）</td>
             <td>显示</td>
           </tr>
+          <tr>
+            <td><code>cache</code> <span class="tag opt">可选</span></td>
+            <td>传 <code>0</code> 关闭 IndexedDB 持久分片缓存（改回内存缓存）</td>
+            <td>开启（持久）</td>
+          </tr>
+          <tr>
+            <td><code>cacheLimit</code> <span class="tag opt">可选</span></td>
+            <td>IndexedDB 持久缓存容量上限（MiB），超出后按最老分片优先逐出；直播/长会话内存有界</td>
+            <td><code>1024</code></td>
+          </tr>
         </table>
       </section>
 
