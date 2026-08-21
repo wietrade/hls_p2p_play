@@ -159,7 +159,7 @@
       const { HlsJsP2PEngine } = window.p2pml.hlsjs;
 
       // ===== 配置：默认内置 + URL 参数可覆盖 =====
-      const TRACKERS_DEFAULT = ["wss://bot3.1230sb.com/tracker", "wss://tracker.webtorrent.dev"]; // 默认 tracker（自建 + 公共实测可用）
+      const TRACKERS_DEFAULT = ["wss://bot3.1230sb.com/tracker"]; // 默认 tracker：只用自建 wt-tracker（公共 tracker 不稳定，已全部移除）
       const DEFAULT_STREAM = "https://s3.bfllvip.com/video/yichengtangan/7191e1fa46c2/index.m3u8";
       // ?url= 传流地址；?tracker= 传 tracker（逗号分隔多个，覆盖默认）；Swarm ID 留空 → 默认按流地址分组
       const qp = new URLSearchParams(location.search);

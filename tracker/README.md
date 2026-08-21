@@ -103,4 +103,4 @@ uWebSockets.js 原生二进制要求 **glibc >= 2.38**。默认 `node:24-slim`�
 
 - 公网暴露建议在 `websocketsAccess` 里配置 `allowOrigins`（只允许你的站点 Origin），或
   用防火墙/反代做访问控制，避免被人当公共 tracker 滥用
-- 多 tracker 容错策略不变：自建放第一位，公共 tracker 兜底
+- 播放器默认只用自建 tracker；`?tracker=` 追加策略保留（可临时加其他 tracker 做对照/测试）

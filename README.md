@@ -28,7 +28,7 @@
 | 参数 | 必填 | 说明 | 默认 |
 | :--- | :--- | :--- | :--- |
 | `url` | ✅ | 视频流地址（.m3u8，http/https） | 内置测试流 |
-| `tracker` | 可选 | Tracker 地址（逗号分隔，ws/wss），**追加**到默认后 | `wss://bot3.1230sb.com/tracker` 等 4 个（自建 + 公共，多 tracker 容错） |
+| `tracker` | 可选 | Tracker 地址（逗号分隔，ws/wss），**追加**到默认后 | `wss://bot3.1230sb.com/tracker`（自建 wt-tracker，唯一） |
 | `stun` | 可选 | STUN 服务器（逗号分隔），**追加**到默认后 | 4 个公共 STUN |
 | `noturn` | 可选 | 传 `1` 关闭 TURN 中继 | 开启 |
 | `stats` | 可选 | 传 `0` 隐藏统计悬浮层 | 显示 |
