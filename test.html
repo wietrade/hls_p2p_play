@@ -266,18 +266,23 @@
 
       // ===== HLS 引擎（customType.m3u8）：HlsJsP2PEngine 替换 new Hls() =====
       function playM3u8(video, url, artInstance) {
-        if (window.Hls.isSupported()) {
-          if (artInstance.hls) artInstance.hls.destroy();
-          const HlsWithP2P = HlsJsP2PEngine.injectMixin(window.Hls);
-          const hls = new HlsWithP2P({
-            p2p: { core: coreCfg(), onHlsJsCreated(h) { onEngine(h.p2pEngine); } },
-            enableWorker: false,
-          });
-          guard(hls);
-          hls.loadSource(url);
-          hls.attachMedia(video);
-          artInstance.hls = hls;          // 官方约定属性
-          artInstance.on("destroy", () => hls.destroy());
+        // 逐步诊断：定位 UC 等浏览器无法接入 P2P 的环节
+        const mseSupport = window.Hls ? window.Hls.isSupported() : "无Hls";
+        const nativeHls = video.canPlayType ? video.canPlayType("application/vnd.apple.mpegurl") : "";
+        log(`🎯 playM3u8: Hls=${!!window.Hls} isSupported=${mseSupport} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`);
+        try {
+          if (window.Hls && window.Hls.isSupported() && HlsJsP2PEngine) {
+            if (artInstance.hls) artInstance.hls.destroy();
+            const HlsWithP2P = HlsJsP2PEngine.injectMixin(window.Hls);
+            const hls = new HlsWithP2P({
+              p2p: { core: coreCfg(), onHlsJsCreated(h) { onEngine(h.p2pEngine); } },
+              enableWorker: false,
+            });
+            guard(hls);
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            artInstance.hls = hls;          // 官方约定属性
+            artInstance.on("destroy", () => hls.destroy());
           // 刷新 hls-control 插件 UI（画质/音轨按钮）。
           // 坑1：插件 update() 绑在 art 的 ready 事件上，但 customType 里 art.hls 往往晚于 ready 才就绪。
           // 坑2：artplayerPluginHlsControl({...}) 返回的是工厂函数，真正的 {update} 实例在 art.plugins 下。
@@ -293,11 +298,17 @@
           }, 600);
           setTimeout(() => clearInterval(poll), 30000);
           log("▶ ArtPlayer 已通过 customType 接入 P2P Hls");
-        } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        } else if (nativeHls) {
           video.src = url;
+          log("🍎 回退原生 HLS（无 P2P）：MSE 不可用，走 video.src", "err");
         } else {
+          log(`❌ 无法播放: Hls=${!!window.Hls} isSupported=${mseSupport} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`, "err");
           artInstance.notice.show = "Unsupported playback format: m3u8";
         }
+      } catch (err) {
+        log(`❌ playM3u8 异常: ${err.message}`, "err");
+        artInstance.notice.show = "播放初始化失败: " + err.message;
+      }
       }
 
       function load() {
@@ -356,6 +367,7 @@
 
       // 初始化
       log(`📌 ArtPlayer + p2p-media-loader（HLS · mDNS 修复版）`);
+      log(`📦 库检查: Hls=${!!window.Hls} HlsJsP2PEngine=${!!HlsJsP2PEngine} Artplayer=${!!window.Artplayer}`);
       load();
       document.getElementById("btnNewTab").addEventListener("click", () => window.open(location.href, "_blank"));
     </script>
