@@ -227,7 +227,10 @@
         e.addEventListener("onChunkDownloaded", (b, src) => { if (src === "http") stats.http += b; else stats.p2p += b; render(); });
         e.addEventListener("onChunkUploaded", (b) => { stats.up += b; render(); });
         e.addEventListener("onSegmentLoaded", (d) => log(`◉ 分片完成 (${d.downloadSource}) ${fmt(d.bytesLength)} · peer=${d.peerId || "—"}`, d.downloadSource === "p2p" ? "p2p" : ""));
-        e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker: ${d.trackerUrl}`, "err"));
+        e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker 错误: ${d.trackerUrl} ${d.error?.message || ""}`, "err"));
+        e.addEventListener("onTrackerWarning", (d) => log(`⚠ Tracker 警告: ${d.trackerUrl} ${d.warning?.message || ""}`));
+        e.addEventListener("onPeerConnectError", (d) => log(`⚠ Peer 连接失败: ${d.peerId} (${d.trackerUrl}) ${d.error?.message || ""}`, "err"));
+        e.addEventListener("onPeerWarning", (d) => log(`⚠ Peer 警告: ${d.peerId} ${d.warning?.message || ""}`));
       }
       const NO_TURN = qp.get("noturn") === "1"; // ?noturn=1 → 只用 STUN（对照实验：验证 TURN 是否必需）
       const coreCfg = () => {
@@ -328,6 +331,28 @@
         art = new Artplayer(opts);
         window.__art = art;
       }
+
+      // ===== WebRTC 支持检测（诊断 UC 等无法连 peer 的浏览器）=====
+      function detectWebRTC() {
+        const r = { pc: false, dc: false, error: "" };
+        try {
+          const PC = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+          r.pc = !!PC;
+          if (PC) {
+            try {
+              const t = new PC({ iceServers: [] });
+              r.dc = typeof t.createDataChannel === "function";
+              t.close();
+            } catch (e) { r.error = "实例化失败: " + e.message; }
+          }
+        } catch (e) { r.error = e.message; }
+        return r;
+      }
+      (function () {
+        const w = detectWebRTC();
+        log(`🔌 WebRTC: RTCPeerConnection=${w.pc ? "✅" : "❌"} DataChannel=${w.dc ? "✅" : "❌"}${w.error ? "（" + w.error + "）" : ""}`);
+        if (!w.pc || !w.dc) log("⚠ 当前浏览器不支持/受限 WebRTC，P2P 不可用（仅 HTTP 播放）", "err");
+      })();
 
       // 初始化
       log(`📌 ArtPlayer + p2p-media-loader（HLS · mDNS 修复版）`);
