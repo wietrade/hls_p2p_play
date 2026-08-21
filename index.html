@@ -77,11 +77,11 @@
       <section class="card">
         <h2>🎬 在线试玩</h2>
         <form class="player-input" onsubmit="playStream(event)">
-          <input type="text" id="streamInput" value="https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" placeholder="输入 m3u8 流地址（http/https）..." />
+          <input type="text" id="streamInput" value="https://s3.bfllvip.com/video/yichengtangan/7191e1fa46c2/index.m3u8" placeholder="输入 m3u8 流地址（http/https）..." />
           <button type="submit">▶ 播放</button>
         </form>
         <div class="player-box">
-          <iframe id="playerFrame" title="P2P 播放器预览" src="play.html?url=https%3A%2F%2Ffengbao12.com%2Fvideo%2Fwanjuzongdongyuan5%2F4a1b08cb03d6%2Findex.m3u8" allowfullscreen></iframe>
+          <iframe id="playerFrame" title="P2P 播放器预览" src="play.html?url=https%3A%2F%2Fs3.bfllvip.com%2Fvideo%2Fyichengtangan%2F7191e1fa46c2%2Findex.m3u8" allowfullscreen></iframe>
         </div>
         <div class="player-hint">💡 在输入框改流地址后点「▶ 播放」即可换源；也可直接用 <code>?url=</code> 参数带流地址打开播放器页面。</div>
       </section>
@@ -196,10 +196,10 @@ frame.contentWindow.postMessage({ type: "p2p:getState" }, "*");                 
       <!-- 示例 -->
       <section class="card">
         <h2>五、实用示例</h2>
-        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8" target="_blank" rel="noopener">▶ 基本播放（默认流 + 默认 tracker）</a>
-        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&stats=0" target="_blank" rel="noopener">▶ 隐藏统计（干净嵌入）</a>
-        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&tracker=wss://bot3.1230sb.com/tracker&stun=stun:stun.qq.com:3478" target="_blank" rel="noopener">▶ 追加自定义 tracker + STUN</a>
-        <a class="demo-link" href="play.html?url=https://fengbao12.com/video/wanjuzongdongyuan5/4a1b08cb03d6/index.m3u8&noturn=1" target="_blank" rel="noopener">▶ 仅 STUN（关闭 TURN 对照实验）</a>
+        <a class="demo-link" href="play.html?url=https://s3.bfllvip.com/video/yichengtangan/7191e1fa46c2/index.m3u8" target="_blank" rel="noopener">▶ 基本播放（默认流 + 默认 tracker）</a>
+        <a class="demo-link" href="play.html?url=https://s3.bfllvip.com/video/yichengtangan/7191e1fa46c2/index.m3u8&stats=0" target="_blank" rel="noopener">▶ 隐藏统计（干净嵌入）</a>
+        <a class="demo-link" href="play.html?url=https://s3.bfllvip.com/video/yichengtangan/7191e1fa46c2/index.m3u8&tracker=wss://bot3.1230sb.com/tracker&stun=stun:stun.qq.com:3478" target="_blank" rel="noopener">▶ 追加自定义 tracker + STUN</a>
+        <a class="demo-link" href="play.html?url=https://s3.bfllvip.com/video/yichengtangan/7191e1fa46c2/index.m3u8&noturn=1" target="_blank" rel="noopener">▶ 仅 STUN（关闭 TURN 对照实验）</a>
       </section>
 
       <!-- 原理 -->
