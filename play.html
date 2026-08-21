@@ -447,6 +447,7 @@
           // iOS 老版本无 MSE：走原生 HLS（不经过 P2P，但可正常播放）
           video.src = url;
           log("🍎 当前环境 hls.js 不可用，已回退原生 HLS（无 P2P）", "err");
+          try { artInstance.notice.show = "当前浏览器不支持 P2P（MSE 不可用），已用原生方式播放"; } catch (e) {}
         } else {
           artInstance.notice.show = "不支持的播放格式: m3u8";
         }

@@ -271,7 +271,8 @@
         // 逐步诊断：定位 UC 等浏览器无法接入 P2P 的环节
         const mseSupport = window.Hls ? window.Hls.isSupported() : "无Hls";
         const nativeHls = video.canPlayType ? video.canPlayType("application/vnd.apple.mpegurl") : "";
-        log(`🎯 playM3u8: Hls=${!!window.Hls} isSupported=${mseSupport} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`);
+        const MS = typeof window.MediaSource !== "undefined" ? (window.MediaSource.isTypeSupported ? "有" : "有但无isTypeSupported") : "无";
+        log(`🎯 playM3u8: Hls=${!!window.Hls} isSupported=${mseSupport} MediaSource=${MS} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`);
         try {
           if (window.Hls && window.Hls.isSupported() && HlsJsP2PEngine) {
             if (artInstance.hls) artInstance.hls.destroy();
@@ -303,6 +304,7 @@
         } else if (nativeHls) {
           video.src = url;
           log("🍎 回退原生 HLS（无 P2P）：MSE 不可用，走 video.src", "err");
+          try { artInstance.notice.show = "当前浏览器不支持 P2P（MSE 不可用），已用原生方式播放"; } catch (e) {}
         } else {
           log(`❌ 无法播放: Hls=${!!window.Hls} isSupported=${mseSupport} engine=${!!HlsJsP2PEngine} nativeHLS=${nativeHls || "无"}`, "err");
           artInstance.notice.show = "Unsupported playback format: m3u8";
