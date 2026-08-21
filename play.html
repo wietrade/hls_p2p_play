@@ -21,6 +21,9 @@
         var fixCandStr = function (c) { return c ? (LAN_IP ? c.replace(MDNS_RE, LAN_IP) : c) : c; };
         var OrigPC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
         if (!OrigPC) return;
+        // 诊断模式（?debug=1）：统计 ICE 候选类型（host/srflx/relay），定位 UC 等浏览器连不上 peer 的环节
+        var DEBUG_ICE = new URLSearchParams(location.search).get("debug") === "1";
+        var ICE_SUMMARY = { host: 0, srflx: 0, relay: 0, other: 0 };
 
         function WrappedPC(cfg) {
           // ICE 兜底注入：core 3.x 内部 rtcConfig 可能不生效时强制注入 __P2P_ICE（4.0.0 已修复，此为双保险）
@@ -40,6 +43,12 @@
 
           var wrapEvent = function (fn) {
             return function (e) {
+              if (DEBUG_ICE && e && e.candidate && e.candidate.candidate) {
+                try {
+                  var _m = (e.candidate.candidate.match(/ typ (\w+)/) || [])[1];
+                  if (_m) { if (ICE_SUMMARY[_m] !== undefined) ICE_SUMMARY[_m]++; else ICE_SUMMARY.other++; }
+                } catch (_e) {}
+              }
               if (e && e.candidate && e.candidate.candidate) {
                 try {
                   var fixed = fixCandStr(e.candidate.candidate);
@@ -60,19 +69,31 @@
             return origAddEventListener(type, fn, opts);
           };
 
-          Object.defineProperty(pc, "onicecandidate", {
-            get: function () { return userOnIce; },
-            set: function (fn) {
-              userOnIce = fn;
-              if (fn && !bound) {
-                bound = true;
-                origAddEventListener("icecandidate", wrapEvent(function (e) {
-                  if (userOnIce) return userOnIce(e);
-                }));
-              }
-            },
-            configurable: true,
-          });
+          // 防御：部分浏览器（如 UC/老 WebView）对原生对象 defineProperty 支持不佳，失败时降级（不包装 onicecandidate）
+          try {
+            Object.defineProperty(pc, "onicecandidate", {
+              get: function () { return userOnIce; },
+              set: function (fn) {
+                userOnIce = fn;
+                if (fn && !bound) {
+                  bound = true;
+                  origAddEventListener("icecandidate", wrapEvent(function (e) {
+                    if (userOnIce) return userOnIce(e);
+                  }));
+                }
+              },
+              configurable: true,
+            });
+          } catch (err) {}
+
+          // 诊断模式：ICE 收集完成后汇总候选类型
+          if (DEBUG_ICE) {
+            try {
+              origAddEventListener("icegatheringcomplete", function () {
+                try { console.log("[p2p] ICE 汇总: " + JSON.stringify(ICE_SUMMARY)); } catch (_e) {}
+              });
+            } catch (_e) {}
+          }
 
           pc.setLocalDescription = function (desc) {
             if (desc && desc.sdp) desc.sdp = fixSdp(desc.sdp);
@@ -316,7 +337,10 @@
         e.addEventListener("onChunkDownloaded", (b, src) => { if (src === "http") stats.http += b; else stats.p2p += b; render(); });
         e.addEventListener("onChunkUploaded", (b) => { stats.up += b; render(); });
         e.addEventListener("onSegmentLoaded", (d) => log(`◉ 分片完成 (${d.downloadSource}) ${fmt(d.bytesLength)} · peer=${d.peerId || "—"}`, d.downloadSource === "p2p" ? "p2p" : ""));
-        e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker: ${d.trackerUrl}`, "err"));
+        e.addEventListener("onTrackerError", (d) => log(`⚠ Tracker 错误: ${d.trackerUrl} ${d.error?.message || ""}`, "err"));
+        e.addEventListener("onTrackerWarning", (d) => log(`⚠ Tracker 警告: ${d.trackerUrl} ${d.warning?.message || ""}`));
+        e.addEventListener("onPeerConnectError", (d) => log(`⚠ Peer 连接失败: ${d.peerId} (${d.trackerUrl}) ${d.error?.message || ""}`, "err"));
+        e.addEventListener("onPeerWarning", (d) => log(`⚠ Peer 警告: ${d.peerId} ${d.warning?.message || ""}`));
       }
 
       // ===== 自定义分片缓存（提升缓存命中率）=====
@@ -487,6 +511,28 @@
           if (ov) ov.classList.add("stats-hidden");
         }
       }
+
+      // ===== WebRTC 支持检测（诊断 UC 等无法连 peer 的浏览器）=====
+      function detectWebRTC() {
+        const r = { pc: false, dc: false, error: "" };
+        try {
+          const PC = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+          r.pc = !!PC;
+          if (PC) {
+            try {
+              const t = new PC({ iceServers: [] });
+              r.dc = typeof t.createDataChannel === "function";
+              t.close();
+            } catch (e) { r.error = "实例化失败: " + e.message; }
+          }
+        } catch (e) { r.error = e.message; }
+        return r;
+      }
+      (function () {
+        const w = detectWebRTC();
+        log(`🔌 WebRTC: RTCPeerConnection=${w.pc ? "✅" : "❌"} DataChannel=${w.dc ? "✅" : "❌"}${w.error ? "（" + w.error + "）" : ""}`);
+        if (!w.pc || !w.dc) log("⚠ 当前浏览器不支持/受限 WebRTC，P2P 不可用（仅 HTTP 播放）", "err");
+      })();
 
       // ===== 初始化（异步：先确保 CDN 库可用）=====
       log(`📌 HLS P2P Player 启动`);
